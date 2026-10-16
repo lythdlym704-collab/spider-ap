@@ -42,7 +42,7 @@ class OverlayService : Service() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(NotificationChannel("ov", "Overlay", NotificationManager.IMPORTANCE_LOW))
         startForeground(1, Notification.Builder(this, "ov")
-            .setContentTitle("Aim View is active")
+            .setContentTitle("حاتم يعمل")
             .setSmallIcon(android.R.drawable.ic_menu_view).build())
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -93,3 +93,4 @@ class OverlayService : Service() {
         super.onDestroy()
     }
 }
+
