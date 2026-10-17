@@ -132,8 +132,26 @@ class MainActivity : Activity() {
 
     private fun wmDensity(arg: String) {
         Thread {
-            val good = try { Runtime.getRuntime().exec(arrayOf("wm", "density", arg)).waitFor() == 0 } catch (e: Exception) { false }
-            if (!good) runOnUiThread { Toast.makeText(this, "فشل تغيير المنظور", Toast.LENGTH_LONG).show() }
+            var msg = ""
+            val good = try {
+                val pr = Runtime.getRuntime().exec(arrayOf("wm", "density", arg))
+                val err = pr.errorStream.bufferedReader().readText()
+                val out = pr.inputStream.bufferedReader().readText()
+                val code = pr.waitFor()
+                msg = (err + out).trim()
+                code == 0 && !msg.contains("Exception", true) && !msg.contains("denied", true)
+            } catch (e: Exception) { msg = e.toString(); false }
+            if (!good) runOnUiThread {
+                val cmd = "wm density $arg"
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("فشل تغيير المنظور")
+                    .setMessage("رسالة النظام:\n" + msg.take(300) + "\n\nيمكنك تنفيذ الأمر يدوياً في LADB:\n" + cmd)
+                    .setPositiveButton("نسخ الأمر") { _, _ ->
+                        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("cmd", cmd))
+                    }
+                    .setNegativeButton("إغلاق", null)
+                    .show()
+            }
         }.start()
     }
 
@@ -154,4 +172,3 @@ class MainActivity : Activity() {
         else Toast.makeText(this, "اللعبة غير مثبتة", Toast.LENGTH_LONG).show()
     }
 }
-
