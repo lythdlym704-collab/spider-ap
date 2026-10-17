@@ -10,6 +10,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import rikka.shizuku.Shizuku
 
 class MainActivity : Activity() {
     private val games = listOf(
@@ -24,9 +25,11 @@ class MainActivity : Activity() {
     private lateinit var preview: TextView
     private lateinit var bar: SeekBar
     private lateinit var info: TextView
+    private lateinit var statusView: TextView
+    private lateinit var shizukuBtn: Button
     private var orig = 400
 
-    private fun hasPerm() = checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") == PackageManager.PERMISSION_GRANTED
+    private fun hasPerm() = Sh.granted()
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -73,23 +76,17 @@ class MainActivity : Activity() {
 
         label("منظور الآيباد")
         val st = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        st.addView(TextView(this).apply {
-            if (hasPerm()) { text = "الصلاحية مفعلة ✓"; setTextColor(Color.rgb(0, 160, 0)) }
-            else { text = "الصلاحية غير مفعلة ✗ (مرة واحدة فقط)"; setTextColor(Color.RED) }
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+        statusView = TextView(this)
+        st.addView(statusView, LinearLayout.LayoutParams(0, -2, 1f))
         st.addView(Button(this).apply { text = "؟"; setOnClickListener { HelpScreen.show(this@MainActivity) } })
         root.addView(st)
-        if (!hasPerm()) {
-            button("1) نسخ أمر الصلاحية") {
-                val cmd = "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
-                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("cmd", cmd))
-                Toast.makeText(this, "تم النسخ. الصقه في LADB ونفذه", Toast.LENGTH_LONG).show()
-            }
-            button("2) فتح خيارات المطور (التصحيح اللاسلكي)") {
-                try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
-                catch (e: Exception) { Toast.makeText(this, "فعّل خيارات المطور أولاً", Toast.LENGTH_LONG).show() }
-            }
-        }
+        shizukuBtn = Button(this).apply { setOnClickListener { onShizukuClick() } }
+        root.addView(shizukuBtn)
+        try {
+            Shizuku.addBinderReceivedListener { runOnUiThread { updateStatus() } }
+            Shizuku.addRequestPermissionResultListener { _, _ -> runOnUiThread { updateStatus() } }
+        } catch (e: Throwable) {}
+        updateStatus()
         info = TextView(this).apply { textSize = 18f; gravity = Gravity.CENTER }
         root.addView(info)
         bar = SeekBar(this).apply { max = 70; progress = p.getInt("pct", 85) - 50 }
@@ -126,33 +123,51 @@ class MainActivity : Activity() {
     private fun applyPct() {
         val pct = bar.progress + 50
         p.edit().putInt("pct", pct).apply()
-        if (!hasPerm()) { Toast.makeText(this, "فعّل الصلاحية أولاً (اضغط ؟ للشرح)", Toast.LENGTH_LONG).show(); return }
+        if (!hasPerm()) { Toast.makeText(this, "فعّل Shizuku أولاً (اضغط ؟ للشرح)", Toast.LENGTH_LONG).show(); return }
         wmDensity((orig * pct / 100).toString())
     }
 
     private fun wmDensity(arg: String) {
         Thread {
-            var msg = ""
-            val good = try {
-                val pr = Runtime.getRuntime().exec(arrayOf("wm", "density", arg))
-                val err = pr.errorStream.bufferedReader().readText()
-                val out = pr.inputStream.bufferedReader().readText()
-                val code = pr.waitFor()
-                msg = (err + out).trim()
-                code == 0 && !msg.contains("Exception", true) && !msg.contains("denied", true)
-            } catch (e: Exception) { msg = e.toString(); false }
+            val (code, msg) = Sh.run("wm", "density", arg)
+            val good = code == 0 && !msg.contains("Exception", true) && !msg.contains("denied", true)
             if (!good) runOnUiThread {
-                val cmd = "wm density $arg"
                 android.app.AlertDialog.Builder(this)
                     .setTitle("فشل تغيير المنظور")
-                    .setMessage("رسالة النظام:\n" + msg.take(300) + "\n\nيمكنك تنفيذ الأمر يدوياً في LADB:\n" + cmd)
-                    .setPositiveButton("نسخ الأمر") { _, _ ->
-                        (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("cmd", cmd))
-                    }
+                    .setMessage("رسالة النظام:\n" + msg.take(300))
                     .setNegativeButton("إغلاق", null)
                     .show()
             }
         }.start()
+    }
+
+    override fun onResume() { super.onResume(); updateStatus() }
+
+    private fun updateStatus() {
+        if (!::statusView.isInitialized) return
+        when {
+            Sh.granted() -> {
+                statusView.text = "منظور الآيباد جاهز ✓"; statusView.setTextColor(Color.rgb(0, 160, 0))
+                shizukuBtn.visibility = View.GONE
+            }
+            Sh.running() -> {
+                statusView.text = "Shizuku شغال، ينتظر سماحك ✗"; statusView.setTextColor(Color.RED)
+                shizukuBtn.text = "السماح لحاتم"; shizukuBtn.visibility = View.VISIBLE
+            }
+            else -> {
+                statusView.text = "Shizuku غير شغال ✗ (اضغط ؟ للشرح)"; statusView.setTextColor(Color.RED)
+                shizukuBtn.text = "فتح Shizuku"; shizukuBtn.visibility = View.VISIBLE
+            }
+        }
+    }
+
+    private fun onShizukuClick() {
+        if (Sh.running()) { Sh.request(); return }
+        val pkg = "moe.shizuku.privileged.api"
+        val launch = packageManager.getLaunchIntentForPackage(pkg)
+        if (launch != null) startActivity(launch)
+        else try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))) }
+        catch (e: Exception) { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))) }
     }
 
     private fun refresh() {
@@ -172,3 +187,4 @@ class MainActivity : Activity() {
         else Toast.makeText(this, "اللعبة غير مثبتة", Toast.LENGTH_LONG).show()
     }
 }
+
