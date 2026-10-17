@@ -50,7 +50,10 @@ class MainActivity : Activity() {
             })
         }
 
-        root.addView(TextView(this).apply { text = "حاتم"; textSize = 30f; gravity = Gravity.CENTER })
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        top.addView(TextView(this).apply { text = "حاتم"; textSize = 30f; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
+        top.addView(Button(this).apply { text = "؟"; textSize = 22f; setOnClickListener { HelpScreen.show(this@MainActivity) } })
+        root.addView(top)
 
         label("اختر اللعبة")
         root.addView(Spinner(this).apply {
@@ -69,10 +72,13 @@ class MainActivity : Activity() {
         }
 
         label("منظور الآيباد")
-        root.addView(TextView(this).apply {
+        val st = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        st.addView(TextView(this).apply {
             if (hasPerm()) { text = "الصلاحية مفعلة ✓"; setTextColor(Color.rgb(0, 160, 0)) }
             else { text = "الصلاحية غير مفعلة ✗ (مرة واحدة فقط)"; setTextColor(Color.RED) }
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        st.addView(Button(this).apply { text = "؟"; setOnClickListener { HelpScreen.show(this@MainActivity) } })
+        root.addView(st)
         if (!hasPerm()) {
             button("1) نسخ أمر الصلاحية") {
                 val cmd = "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
@@ -120,7 +126,7 @@ class MainActivity : Activity() {
     private fun applyPct() {
         val pct = bar.progress + 50
         p.edit().putInt("pct", pct).apply()
-        if (!hasPerm()) { Toast.makeText(this, "فعّل الصلاحية أولاً", Toast.LENGTH_LONG).show(); return }
+        if (!hasPerm()) { Toast.makeText(this, "فعّل الصلاحية أولاً (اضغط ؟ للشرح)", Toast.LENGTH_LONG).show(); return }
         wmDensity((orig * pct / 100).toString())
     }
 
